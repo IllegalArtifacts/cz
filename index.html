@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Interactive Image Overlay with Resizing</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-image: url('https://raw.githubusercontent.com/IllegalArtifacts/cz/main/czbackground.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+            width: 75vw; 
+        }
+
+        .file-input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            border: 4px solid #000;
+            border-radius: 20px;
+            background-color: #84c8d5;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-input-container label {
+            font-size: 2.2em; /* Adjusted font size */
+            font-weight: bold; /* Adjusted font weight */
+            margin-bottom: 10px; /* Space between label and input */
+        }
+
+        .file-input-container:hover {
+            background-color: #e3ff88;
+        }
+
+        #overlayGallery {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            overflow-y: auto;
+            max-height: 70vh;
+            background-color: white;
+            border: 2px solid #000;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        #overlayGallery .overlay-set {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #overlayGallery img {
+            cursor: pointer;
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            margin: 5px;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            background-color: white;
+            padding: 5px;
+        }
+
+        #overlayGallery img.selected {
+            border-color: #000;
+        }
+
+        #canvas {
+            border: 1px solid black;
+            margin-top: 10px;
+        }
+
+        .controls {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .controls button {
+            margin: 5px;
+            padding: 10px;
+        }
+
+        .resize-handle {
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            position: absolute;
+            cursor: nwse-resize;
+        }
+
+        .overlay-box {
+            position: absolute;
+            border: 2px dashed black;
+        }
+
+        .separator {
+            width: 100%;
+            border-top: 2px solid black;
+            margin: 10px 0;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="file-input-container">
+            <label for="imageInput">UPLOAD IMAGE TO OVERLAY</label>
+            <input type="file" id="imageInput" accept="image/*" class="file-input">
+        </div>
+
+        <div class="file-input-container">
+            <label for="overlayInput">UPLOAD CUSTOM OVERLAY IMAGE</label>
+            <input type="file" id="overlayInput" accept="image/*" class="file-input">
+        </div>
+
+        <div id="overlayGallery">
+            <div class="overlay-set" id="firstSet"></div>
+            <div class="separator"></div>
+            <div class="overlay-set" id="secondSet"></div>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <button id="rotateLeft">Rotate Left</button>
+            <button id="rotateRight">Rotate Right</button>
+            <button id="flipHorizontal">Flip Horizontal</button>
+            <button id="flipVertical">Flip Vertical</button>
+            <button id="saveImage">Save Image</button>
+        </div>
+    </div>
+
+    <script>
+        const imgInput = document.getElementById('imageInput');
+        const ovInput = document.getElementById('overlayInput');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const firstSet = document.getElementById('firstSet');
+        const secondSet = document.getElementById('secondSet');
+        const saveBtn = document.getElementById('saveImage');
+
+        let baseImg = new Image();
+        let customOvImg = new Image();
+        let currOvSrc = '', customOvSrc = '';
+
+        let overlays = [];
+        let selectedOverlay = null;
+
+        let isDragging = false, isResizing = false;
+        let startX, startY, initialX, initialY;
+        let selectedOverlayInitialWidth, selectedOverlayInitialHeight;
+
+        imgInput.addEventListener('change', handleImage);
+        ovInput.addEventListener('change', handleCustomOv);
+        window.addEventListener('resize', drawCanvas);
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('keydown', handleKeyDown);
+        saveBtn.addEventListener('click', saveImage);
+        document.getElementById('rotateLeft').addEventListener('click', rotateLeft);
+        document.getElementById('rotateRight').addEventListener('click', rotateRight);
+        document.getElementById('flipHorizontal').addEventListener('click', flipHorizontal);
+        document.getElementById('flipVertical').addEventListener('click', flipVertical);
+
+        function fetchOvGallery() {
+            const firstSetUrls = [
+                'https://raw.githubusercontent.com/IllegalArtifacts/cz/main/cz1.png'
+            ];
+
+            const secondSetUrls = [
+                'https://raw.githubusercontent.com/IllegalArtifacts/cz/main/cz2.png',
+                'https://raw.githubusercontent.com/IllegalArtifacts/cz/main/cz3.png'
+            ];
+
+            firstSetUrls.forEach(url => {
+                const img = document.createElement('img');
+                img.crossOrigin = "anonymous";
+                img.src = url;
+                img.onclick = () => selectOverlay(img.src);
+                firstSet.appendChild(img);
+            });
+
+            secondSetUrls.forEach(url => {
+                const img = document.createElement('img');
+                img.crossOrigin = "anonymous";
+                img.src = url;
+                img.onclick = () => selectOverlay(img.src);
+                secondSet.appendChild(img);
+            });
+        }
+
+        function selectOverlay(src) {
+            const overlay = {
+                img: new Image(),
+                x: 50,
+                y: 50,
+                w: 100,
+                h: 100,
+                rot: 0,
+                flipX: 1,
+                flipY: 1,
+                isSelected: false
+            };
+            overlay.img.crossOrigin = 'anonymous';
+            overlay.img.src = src;
+            overlay.img.onload = () => {
+                overlays.push(overlay);
+                selectedOverlay = overlay;
+                drawCanvas();
+            };
+        }
+
+        function handleImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                baseImg.src = URL.createObjectURL(file);
+                baseImg.onload = () => drawCanvas();
+            }
+        }
+
+        function handleCustomOv(event) {
+            const file = event.target.files[0];
+            if (file) {
+                customOvImg.src = URL.createObjectURL(file);
+                customOvImg.onload = () => {
+                    customOvSrc = customOvImg.src;
+                    selectOverlay(customOvSrc);
+                };
+            }
+        }
+
+        function drawCanvas(showBoundingBoxes = true) {
+            const containerWidth = document.querySelector('.container').offsetWidth * 0.75;
+            canvas.width = containerWidth; 
+            canvas.height = (baseImg.naturalHeight / baseImg.naturalWidth) * canvas.width; 
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (baseImg.src) {
+                ctx.drawImage(baseImg, 0, 0, canvas.width, canvas.height);
+            }
+
+            overlays.forEach(overlay => {
+                ctx.save();
+                ctx.translate(overlay.x + overlay.w / 2, overlay.y + overlay.h / 2);
+                ctx.rotate(overlay.rot * Math.PI / 180);
+                ctx.scale(overlay.flipX, overlay.flipY);
+                ctx.drawImage(overlay.img, -overlay.w / 2, -overlay.h / 2, overlay.w, overlay.h);
+                ctx.restore();
+
+                if (showBoundingBoxes && overlay === selectedOverlay) {
+                    drawBoundingBox(overlay);
+                }
+            });
+        }
+
+        function handleMouseDown(e) {
+            const mousePos = getMousePos(e);
+
+            // Select an overlay by clicking on it
+            selectedOverlay = overlays.find(overlay => isMouseOverOverlay(mousePos, overlay));
+            if (selectedOverlay) {
+                if (isMouseOverResizeHandle(mousePos, selectedOverlay)) {
+                    isResizing = true;
+                    selectedOverlayInitialWidth = selectedOverlay.w;
+                    selectedOverlayInitialHeight = selectedOverlay.h;
+                } else {
+                    isDragging = true;
+                }
+                startX = mousePos.x;
+                startY = mousePos.y;
+            }
+            drawCanvas();
+        }
+
+        function handleMouseMove(e) {
+            const mousePos = getMousePos(e);
+            if (isDragging && selectedOverlay) {
+                const dx = mousePos.x - startX;
+                const dy = mousePos.y - startY;
+                selectedOverlay.x += dx;
+                selectedOverlay.y += dy;
+                startX = mousePos.x;
+                startY = mousePos.y;
+                drawCanvas();
+            } else if (isResizing && selectedOverlay) {
+                const dx = mousePos.x - startX;
+                const dy = mousePos.y - startY;
+                selectedOverlay.w = selectedOverlayInitialWidth + dx;
+                selectedOverlay.h = selectedOverlayInitialHeight + dy;
+                drawCanvas();
+            }
+        }
+
+        function handleMouseUp() {
+            isDragging = false;
+            isResizing = false;
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === "Delete" && selectedOverlay) {
+                overlays = overlays.filter(overlay => overlay !== selectedOverlay);
+                selectedOverlay = null;
+                drawCanvas();
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function isMouseOverOverlay(pos, overlay) {
+            return pos.x > overlay.x && pos.x < overlay.x + overlay.w &&
+                   pos.y > overlay.y && pos.y < overlay.y + overlay.h;
+        }
+
+        function isMouseOverResizeHandle(pos, overlay) {
+            const handleSize = 10;
+            const handleX = overlay.x + overlay.w - handleSize;
+            const handleY = overlay.y + overlay.h - handleSize;
+            return pos.x > handleX && pos.x < handleX + handleSize &&
+                   pos.y > handleY && pos.y < handleY + handleSize;
+        }
+
+        function drawBoundingBox(overlay) {
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(overlay.x, overlay.y, overlay.w, overlay.h);
+            ctx.fillStyle = 'red';
+            ctx.fillRect(overlay.x + overlay.w - 10, overlay.y + overlay.h - 10, 10, 10);
+        }
+
+        function saveImage() {
+            drawCanvas(false);
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL("image/png");
+            link.download = 'canvas_image.png';
+            link.click();
+            drawCanvas();
+        }
+
+        function rotateLeft() {
+            if (selectedOverlay) {
+                selectedOverlay.rot -= 10;
+                drawCanvas();
+            }
+        }
+
+        function rotateRight() {
+            if (selectedOverlay) {
+                selectedOverlay.rot += 10;
+                drawCanvas();
+            }
+        }
+
+        function flipHorizontal() {
+            if (selectedOverlay) {
+                selectedOverlay.flipX *= -1;
+                drawCanvas();
+            }
+        }
+
+        function flipVertical() {
+            if (selectedOverlay) {
+                selectedOverlay.flipY *= -1;
+                drawCanvas();
+            }
+        }
+
+        fetchOvGallery();
+    </script>
+</body>
+</html>
